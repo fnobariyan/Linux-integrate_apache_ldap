@@ -1,0 +1,111 @@
+## 2. Apache Server Setup (Rocky Linux)
+
+### Install and Start Apache
+
+```bash
+sudo dnf install httpd openldap-clients nmap-ncat -y
+sudo systemctl enable --now httpd
+httpd -M | grep ldap
+```
+
+### Configure LDAP Hostname Resolution
+
+Edit `/etc/hosts`:
+
+```bash
+sudo vi /etc/hosts
+```
+
+Add:
+
+```text
+192.168.56.109 ldap.mcloud.local
+```
+
+Verify connectivity:
+
+```bash
+getent hosts ldap.mcloud.local
+nc -zv ldap.mcloud.local 389
+```
+
+### Create the Website Directory and Test Page
+
+```bash
+sudo mkdir -p /var/www/html/dl-mcloud-local
+echo "LDAP Apache Test" | sudo tee /var/www/html/dl-mcloud-local/index.html
+```
+
+### Configure Apache LDAP Authentication
+
+Create `/etc/httpd/conf.d/ldap.conf`:
+
+```apache
+<VirtualHost 192.168.56.111:80>
+    DocumentRoot "/var/www/html/dl-mcloud-local"
+
+    <Directory "/var/www/html/dl-mcloud-local">
+        Options -Indexes +FollowSymLinks
+        AllowOverride None
+
+        AuthType Basic
+        AuthName "LDAP Authentication"
+        AuthBasicProvider ldap
+
+        AuthLDAPURL "ldap://ldap.mcloud.local:389/dc=mcloud,dc=local?uid?sub?(objectClass=person)"
+
+        AuthLDAPBindDN "cn=admin,dc=mcloud,dc=local"
+        AuthLDAPBindPassword "REPLACE_WITH_ADMIN_PASSWORD"
+
+        Require valid-user
+    </Directory>
+
+    ErrorLog /var/log/httpd/dl-mcloud-local_error.log
+    CustomLog /var/log/httpd/dl-mcloud-local_access.log combined
+</VirtualHost>
+```
+
+Replace `REPLACE_WITH_ADMIN_PASSWORD` with the actual LDAP admin password on the server. Never publish the real password.
+
+### Test and Reload Apache
+
+```bash
+sudo apachectl -t
+sudo httpd -S
+sudo systemctl reload httpd
+sudo systemctl status httpd
+```
+
+## 3. Test Authentication
+
+Open in a browser:
+
+```text
+http://192.168.56.111
+```
+
+Log in with:
+
+* Username: `fatemeh`
+* Password: the LDAP user's password
+
+Or test from the Apache server:
+
+```bash
+curl -I -u fatemeh http://192.168.56.111
+```
+
+The command prompts for the user's password. A successful authentication should normally return `HTTP/1.1 200 OK`.
+
+## Environment Summary
+
+* LDAP Server: Ubuntu
+* Apache Server: Rocky Linux
+* LDAP Domain: `mcloud.local`
+* Base DN: `dc=mcloud,dc=local`
+* LDAP Server IP: `192.168.56.109`
+* Apache Server IP: `192.168.56.111`
+* LDAP Port: `389`
+* Apache Port: `80`
+* LDAP User: `fatemeh`
+* LDAP Group: `devops`
