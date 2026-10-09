@@ -1,0 +1,128 @@
+# LDAP + Apache Authentication Lab
+
+## 1. LDAP Server Setup (Ubuntu)
+
+### Install OpenLDAP
+
+```bash
+sudo apt update
+sudo apt install slapd ldap-utils -y
+sudo systemctl enable --now slapd
+sudo systemctl status slapd
+sudo ss -lntp | grep 389
+```
+
+### Check LDAP Base DN
+
+```bash
+ldapsearch -x -H ldap://localhost -b "dc=mcloud,dc=local"
+```
+
+### Check LDAP Admin DN
+
+```bash
+sudo ldapsearch -Y EXTERNAL -H ldapi:/// -b "cn=config" "(olcRootDN=*)" olcRootDN
+```
+
+### Authenticate as LDAP Admin
+
+```bash
+ldapwhoami -x -H ldap://localhost -D "cn=admin,dc=mcloud,dc=local" -W
+```
+
+### Create Organizational Units
+
+Create `/etc/ldap/base-groups.ldif`:
+
+```ldif
+dn: ou=people,dc=mcloud,dc=local
+objectClass: organizationalUnit
+ou: people
+
+dn: ou=groups,dc=mcloud,dc=local
+objectClass: organizationalUnit
+ou: groups
+```
+
+Apply:
+
+```bash
+ldapadd -x -H ldap://localhost -D "cn=admin,dc=mcloud,dc=local" -W -f /etc/ldap/base-groups.ldif
+```
+
+### Create the devops Group
+
+Create `/etc/ldap/group.ldif`:
+
+```ldif
+dn: cn=devops,ou=groups,dc=mcloud,dc=local
+objectClass: posixGroup
+cn: devops
+gidNumber: 5000
+```
+
+Apply:
+
+```bash
+ldapadd -x -H ldap://localhost -D "cn=admin,dc=mcloud,dc=local" -W -f /etc/ldap/group.ldif
+```
+
+### Create the LDAP User
+
+Generate a password hash:
+
+```bash
+slappasswd
+```
+
+Create `/etc/ldap/user.ldif`:
+
+```ldif
+dn: uid=fatemeh,ou=people,dc=mcloud,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: fatemeh
+sn: nobariyan
+givenName: fatemeh
+cn: fatemeh nobariyan
+displayName: fatemeh nobariyan
+uidNumber: 7000
+gidNumber: 5000
+userPassword: {SSHA}<HASH>
+gecos: fatemeh nobariyan
+loginShell: /bin/bash
+homeDirectory: /home/fatemeh
+```
+
+Replace `{SSHA}<HASH>` with the generated hash, then apply:
+
+```bash
+ldapadd -x -H ldap://localhost -D "cn=admin,dc=mcloud,dc=local" -W -f /etc/ldap/user.ldif
+```
+
+### Verify LDAP Entries
+
+```bash
+ldapsearch -x -H ldap://localhost -LLL -b "dc=mcloud,dc=local" -s base
+ldapsearch -x -H ldap://localhost -LLL -b "cn=devops,ou=groups,dc=mcloud,dc=local"
+ldapsearch -x -H ldap://localhost -LLL -b "uid=fatemeh,ou=people,dc=mcloud,dc=local"
+```
+
+### Optional: Add User to the devops Group
+
+Create `/etc/ldap/add-member.ldif`:
+
+```ldif
+dn: cn=devops,ou=groups,dc=mcloud,dc=local
+changetype: modify
+add: memberUid
+memberUid: fatemeh
+```
+
+Apply:
+
+```bash
+ldapmodify -x -H ldap://localhost -D "cn=admin,dc=mcloud,dc=local" -W -f /etc/ldap/add-member.ldif
+```
+
